@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+# computer - personal CLI toolkit
+# https://github.com/jeronimoluza/computer
+set -euo pipefail
+
+COMPUTER_HOME="${HOME}/.computer"
+COMMANDS_DIR="${COMPUTER_HOME}/commands"
+SKILLS_DIR="${COMPUTER_HOME}/skills"
+TEMPLATES_DIR="${COMPUTER_HOME}/templates"
+LIB="${COMMANDS_DIR}/lib/common.sh"
+VERSION="0.1.0"
+
+# Source shared helpers
+# shellcheck disable=SC1090
+[ -f "$LIB" ] && source "$LIB" || {
+    BOLD="\033[1m"; DIM="\033[2m"; CYAN="\033[36m"
+    GREEN="\033[32m"; YELLOW="\033[33m"; RED="\033[31m"; RESET="\033[0m"
+    sep() { printf "${DIM}%s${RESET}\n" "──────────────────────────────────────────"; }
+}
+
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+cmd_readme() {
+    # Load user settings (provides COMPUTER_REPO_URL, limits, etc.)
+    load_settings 2>/dev/null || true
+
+    echo ""
+    printf "${BOLD}${CYAN}  computer${RESET}  ${DIM}v${VERSION}${RESET}\n"
+    echo ""
+    sep
+
+    # ── Built-in commands
+    printf "${BOLD}  Commands${RESET}\n"
+    printf "  ${CYAN}%-20s${RESET} %s\n" "computer"           "Show this dashboard"
+    printf "  ${CYAN}%-20s${RESET} %s\n" "computer install"   "Install hooks, PATH, config"
+    printf "  ${CYAN}%-20s${RESET} %s\n" "computer update"    "Pull latest from GitHub"
+    printf "  ${CYAN}%-20s${RESET} %s\n" "computer version"   "Show version"
+
+    # ── User commands (anything else in commands/bin/)
+    local has_user_cmds=0
+    for f in "${COMMANDS_DIR}/bin/"*; do
+        local name
+        name=$(basename "$f")
+        [[ "$name" == "computer" ]] && continue
+        [[ -x "$f" ]] || continue
+        if [[ $has_user_cmds -eq 0 ]]; then
+            echo ""
+            printf "${BOLD}  User Commands${RESET}\n"
+            has_user_cmds=1
+        fi
+        printf "  ${GREEN}%-20s${RESET} %s\n" "$name" "$f"
+    done
+
+    sep
+
+    # ── Skills
+    printf "${BOLD}  Skills${RESET}\n"
+    local skill_count=0
+    if [[ -d "$SKILLS_DIR" ]]; then
+        for f in "${SKILLS_DIR}/"*/SKILL.md; do
+            [[ -f "$f" ]] || continue
+            local skill_name
+            skill_name=$(basename "$(dirname "$f")")
+            printf "  ${CYAN}%-20s${RESET} %s\n" "$skill_name" "$(dirname "$f")"
+            (( skill_count++ )) || true
+        done
+    fi
+    if [[ $skill_count -eq 0 ]]; then
+        printf "  ${DIM}No skills yet → add to ~/.computer/skills/${RESET}\n"
+    fi
+
+    sep
+
+    # ── Templates
+    printf "${BOLD}  Templates${RESET}\n"
+    local tpl_count=0
+    if [[ -d "$TEMPLATES_DIR" ]]; then
+        while IFS= read -r -d '' f; do
+            local name
+            name=$(basename "$f")
+            printf "  ${CYAN}%-20s${RESET} %s\n" "$name" "$f"
+            (( tpl_count++ )) || true
+        done < <(find "$TEMPLATES_DIR" -maxdepth 1 -type f -print0 2>/dev/null)
+    fi
+    if [[ $tpl_count -eq 0 ]]; then
+        printf "  ${DIM}No templates yet → add to ~/.computer/templates/${RESET}\n"
+    fi
+
+    sep
+
+    # ── Recent projects (from config/projects.conf)
+    printf "${BOLD}  Recent Projects${RESET}\n"
+    local proj_lines=()
+    while IFS= read -r proj_dir; do
+        [[ -d "$proj_dir" ]] || continue
+        for repo in "$proj_dir"/*/; do
+            [[ -d "${repo}/.git" ]] || continue
+            local ts rel name
+            ts=$(git -C "$repo" log -1 --format="%ct" 2>/dev/null || echo "0")
+            rel=$(git -C "$repo" log -1 --format="%cr" 2>/dev/null || echo "unknown")
+            name=$(basename "$repo")
+            proj_lines+=("${ts}|${rel}|${name}")
+        done
+    done < <(load_project_dirs 2>/dev/null)
+
+    local proj_limit="${COMPUTER_PROJECTS_LIMIT:-5}"
+    local count=0
+    if [[ ${#proj_lines[@]} -gt 0 ]]; then
+        while IFS='|' read -r _ rel name; do
+            printf "  ${GREEN}%-22s${RESET} ${DIM}%s${RESET}\n" "$name" "$rel"
+            (( count++ )) || true
+            [[ $count -ge $proj_limit ]] && break
+        done < <(printf '%s\n' "${proj_lines[@]}" | sort -t'|' -k1 -rn)
+    fi
+    if [[ $count -eq 0 ]]; then
+        printf "  ${DIM}No projects found → edit ~/.computer/config/projects.conf${RESET}\n"
+    fi
+
+    sep
+
+    # ── Recent opencode sessions
+    printf "${BOLD}  Recent Sessions${RESET}\n"
+    local db="${HOME}/.local/share/opencode/opencode.db"
+    local sess_limit="${COMPUTER_SESSIONS_LIMIT:-5}"
+    if command -v sqlite3 &>/dev/null && [[ -f "$db" ]]; then
+        local sessions
+        sessions=$(sqlite3 "$db" \
+            "SELECT title, directory, time_updated FROM session ORDER BY time_updated DESC LIMIT ${sess_limit};" \
+            2>/dev/null || true)
+        if [[ -n "$sessions" ]]; then
+            while IFS='|' read -r title dir ts; do
+                local age_s rel_time short_dir short_title
+                age_s=$(( ( $(date +%s) * 1000 - ts ) / 1000 ))
+                if   (( age_s < 3600  )); then rel_time="$((age_s / 60))m ago"
+                elif (( age_s < 86400 )); then rel_time="$((age_s / 3600))h ago"
+                else                           rel_time="$((age_s / 86400))d ago"
+                fi
+                short_dir="${dir/#$HOME/~}"
+                short_title="${title:0:38}"
+                [[ ${#title} -gt 38 ]] && short_title="${short_title}…"
+                printf "  ${GREEN}%-40s${RESET} ${DIM}%-10s  %s${RESET}\n" \
+                    "$short_title" "$rel_time" "$short_dir"
+            done <<< "$sessions"
+        else
+            printf "  ${DIM}No sessions found${RESET}\n"
+        fi
+    else
+        printf "  ${DIM}sqlite3 unavailable or no opencode DB${RESET}\n"
+    fi
+
+    sep
+    printf "  ${DIM}%s${RESET}\n" "${COMPUTER_REPO_URL:-https://github.com/jeronimoluza/computer}"
+    echo ""
+}
+
+# ── Install ───────────────────────────────────────────────────────────────────
+cmd_install() {
+    sh "${COMPUTER_HOME}/install.sh" "$@"
+}
+
+# ── Update ────────────────────────────────────────────────────────────────────
+cmd_update() {
+    info "Pulling latest changes..."
+    git -C "${COMPUTER_HOME}" pull --ff-only
+    # Re-sync the pre-commit hook in case it changed upstream
+    if [[ -f "${COMPUTER_HOME}/hooks/pre-commit" ]]; then
+        cp "${COMPUTER_HOME}/hooks/pre-commit" "${COMPUTER_HOME}/.git/hooks/pre-commit"
+        chmod +x "${COMPUTER_HOME}/.git/hooks/pre-commit"
+        ok "Pre-commit hook updated."
+    fi
+    ok "computer updated."
+}
+
+# ── Version ───────────────────────────────────────────────────────────────────
+cmd_version() {
+    echo "computer v${VERSION}"
+}
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+CMD="${1:-readme}"
+shift || true
+
+case "$CMD" in
+    readme|help|--help|-h|"")  cmd_readme ;;
+    install)                   cmd_install "$@" ;;
+    update)                    cmd_update ;;
+    version|--version|-v)      cmd_version ;;
+    *)
+        SUBCMD="${COMMANDS_DIR}/bin/${CMD}"
+        if [[ -x "$SUBCMD" ]]; then
+            exec "$SUBCMD" "$@"
+        else
+            printf "${RED}computer: unknown command '%s'${RESET}\n" "$CMD" >&2
+            printf "Run 'computer' for usage.\n" >&2
+            exit 1
+        fi
+        ;;
+esac

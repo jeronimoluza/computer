@@ -1,0 +1,13 @@
+# computer - user settings
+# Copy this file to settings.conf and edit it:
+#   cp config/settings.conf.example config/settings.conf
+#
+# Your fork's GitHub repo URL (used in dashboard footer and update command).
+# Change this if you forked the repo under your own username.
+COMPUTER_REPO_URL="https://github.com/jeronimoluza/computer"
+
+# Number of recent projects to show in dashboard (default: 5)
+COMPUTER_PROJECTS_LIMIT=5
+
+# Number of recent sessions to show in dashboard (default: 5)
+COMPUTER_SESSIONS_LIMIT=5

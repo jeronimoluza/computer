@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# computer pre-commit hook - blocks secrets from being committed
+# Installed by: computer install
+# Source: https://github.com/jeronimoluza/computer
+
+set -euo pipefail
+
+RED="\033[31m"
+YELLOW="\033[33m"
+BOLD="\033[1m"
+RESET="\033[0m"
+
+FAILED=0
+
+# POSIX ERE patterns (macOS BSD grep + GNU grep compatible)
+SECRET_PATTERNS="
+AKIA[0-9A-Z]{16}
+sk-[a-zA-Z0-9]{32,}
+ghp_[a-zA-Z0-9]{36}
+github_pat_[a-zA-Z0-9_]{80,}
+gho_[a-zA-Z0-9]{36}
+ghu_[a-zA-Z0-9]{36}
+ghs_[a-zA-Z0-9]{36}
+xox[baprs]-[a-zA-Z0-9-]+
+AIza[0-9A-Za-z_-]{35}
+ya29\.[0-9A-Za-z_-]+
+BEGIN (RSA|EC|DSA|OPENSSH) PRIVATE KEY
+BEGIN PRIVATE KEY
+token[[:space:]]*=[[:space:]]*\"[a-zA-Z0-9_./-]{20,}\"
+api.?key[[:space:]]*=[[:space:]]*\"[a-zA-Z0-9_./-]{16,}\"
+secret[[:space:]]*=[[:space:]]*\"[a-zA-Z0-9_./-]{16,}\"
+password[[:space:]]*=[[:space:]]*\"[^\"]{8,}\"
+"
+
+# Filenames that should never be committed
+BLOCKED_FILE_PATTERNS="
+\.env$
+\.env\.
+\.pem$
+\.key$
+credentials\.json$
+secrets\.json$
+auth\.json$
+token\.json$
+"
+
+printf "${BOLD}[computer]${RESET} Scanning staged changes for secrets...\n"
+
+# Check blocked filenames
+while IFS= read -r staged_file; do
+    [ -z "$staged_file" ] && continue
+    echo "$BLOCKED_FILE_PATTERNS" | while IFS= read -r pat; do
+        [ -z "$pat" ] && continue
+        if echo "$staged_file" | grep -qE "$pat"; then
+            printf "${RED}[BLOCKED FILE]${RESET} '%s' matches blocked pattern '%s'\n" \
+                "$staged_file" "$pat"
+            FAILED=1
+        fi
+    done
+done < <(git diff --cached --name-only)
+
+# Get added lines from staged diff (skip diff headers)
+DIFF=$(git diff --cached --unified=0 2>/dev/null \
+    | grep -E '^\+' \
+    | grep -vE '^\+\+\+' \
+    || true)
+
+# Check each pattern
+echo "$SECRET_PATTERNS" | while IFS= read -r pat; do
+    [ -z "$pat" ] && continue
+    matches=$(echo "$DIFF" | grep -E "$pat" || true)
+    if [ -n "$matches" ]; then
+        printf "${RED}[POSSIBLE SECRET]${RESET} Pattern matched: %s\n" "$pat"
+        echo "$matches" | head -3 | sed 's/^/  /'
+        FAILED=1
+    fi
+done
+
+if [ "$FAILED" -eq 1 ]; then
+    printf "\n${RED}${BOLD}Commit blocked.${RESET} Remove secrets before committing.\n"
+    printf "${YELLOW}To bypass (dangerous): git commit --no-verify${RESET}\n"
+    exit 1
+fi
+
+printf "[computer] No secrets detected. Proceeding.\n"
+exit 0

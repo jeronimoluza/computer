@@ -1,0 +1,14 @@
+# computer - project directories
+# Directories to scan for recent git projects in the dashboard.
+# One path per line. Supports ~ expansion.
+# Lines starting with # are ignored.
+#
+# Copy this file to projects.conf and edit it:
+#   cp config/projects.conf.example config/projects.conf
+#
+# Example:
+# ~/projects
+# ~/code
+# ~/work
+~/projects
+~/code
