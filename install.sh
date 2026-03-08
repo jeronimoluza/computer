@@ -178,6 +178,19 @@ setup_config() {
     done
 }
 
+# ── Create local data dirs (personal, never commit) ──────────────────────────
+setup_local_data() {
+    LOCAL_DIR="${COMPUTER_HOME}/local"
+    mkdir -p \
+        "${LOCAL_DIR}/sessions" \
+        "${LOCAL_DIR}/knowledge" \
+        "${LOCAL_DIR}/state" \
+        "${LOCAL_DIR}/inbox"
+    # Best-effort: restrict permissions (ignore errors on some filesystems)
+    chmod 700 "${LOCAL_DIR}" 2>/dev/null || true
+    ok "Local data dirs ready: ${LOCAL_DIR}"
+}
+
 # ── Sync skills into Claude Code ─────────────────────────────────────────────
 sync_skills() {
     SKILL_SYNC="${COMPUTER_HOME}/commands/bin/sync-skills"
@@ -229,6 +242,7 @@ main() {
     install_hook
     setup_path
     setup_config
+    setup_local_data
     sync_skills
     print_summary
 }

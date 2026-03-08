@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# computer ingest - ingest sessions into ~/.computer/local/sessions
+set -euo pipefail
+
+COMPUTER_HOME="${HOME}/.computer"
+LIB="${COMPUTER_HOME}/commands/lib/common.sh"
+
+# shellcheck disable=SC1090
+[ -f "${LIB}" ] && source "${LIB}"
+
+usage() {
+  cat <<'EOF'
+Usage: computer ingest <tool|all> [--dry-run] [--limit N]
+
+Ingests tool-native session logs into ~/.computer/local/sessions.
+
+Tools:
+  opencode   Ingest from ~/.local/share/opencode/opencode.db
+  claude     Ingest from ~/.claude/projects/**/*.jsonl (best-effort)
+  all        Run all configured ingestors
+
+Options:
+  --dry-run  Show what would be ingested
+  --limit N  Max sessions per tool (default: unlimited)
+  -h, --help Show help
+EOF
+}
+
+tool=""
+dry_run=0
+limit=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --dry-run)
+      dry_run=1
+      shift
+      ;;
+    --limit)
+      limit="${2:-}"
+      shift 2
+      ;;
+    *)
+      if [[ -z "$tool" ]]; then
+        tool="$1"
+        shift
+      else
+        err "Unknown argument: $1"
+        usage
+        exit 1
+      fi
+      ;;
+  esac
+done
+
+if [[ -z "$tool" ]]; then
+  usage
+  exit 1
+fi
+
+load_settings 2>/dev/null || true
+ensure_local_dirs
+
+STATE_FILE="${COMPUTER_STATE_DIR}/ingest.json"
+
+run_opencode() {
+  local db="${HOME}/.local/share/opencode/opencode.db"
+  if [[ ! -f "$db" ]]; then
+    warn "OpenCode DB not found: ${db}"
+    return 0
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    err "python3 is required for opencode ingestion"
+    return 1
+  fi
+
+  local args=("${COMPUTER_HOME}/commands/lib/ingest_opencode.py" \
+    --db "$db" \
+    --out "${COMPUTER_SESSIONS_DIR}/opencode" \
+    --state "$STATE_FILE")
+  [[ $dry_run -eq 1 ]] && args+=(--dry-run)
+  [[ -n "$limit" ]] && args+=(--limit "$limit")
+  python3 "${args[@]}"
+}
+
+run_claude() {
+  local root="${HOME}/.claude/projects"
+  if [[ ! -d "$root" ]]; then
+    warn "Claude projects dir not found: ${root}"
+    return 0
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    err "python3 is required for claude ingestion"
+    return 1
+  fi
+
+  local args=("${COMPUTER_HOME}/commands/lib/ingest_claude.py" \
+    --root "$root" \
+    --out "${COMPUTER_SESSIONS_DIR}/claude" \
+    --state "$STATE_FILE")
+  [[ $dry_run -eq 1 ]] && args+=(--dry-run)
+  [[ -n "$limit" ]] && args+=(--limit "$limit")
+  python3 "${args[@]}"
+}
+
+case "$tool" in
+  opencode) run_opencode ;;
+  claude)   run_claude   ;;
+  all)
+    run_opencode
+    run_claude
+    ;;
+  *)
+    err "Unknown tool: $tool"
+    usage
+    exit 1
+    ;;
+esac

@@ -23,6 +23,9 @@ token.json
 config/*.conf
 !config/*.conf.example
 
+# ── Local data (personal, never commit) ──────────────────────────────────────
+local/
+
 # ── OS / editor ───────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db

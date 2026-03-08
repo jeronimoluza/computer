@@ -11,3 +11,10 @@ COMPUTER_PROJECTS_LIMIT=5
 
 # Number of recent sessions to show in dashboard (default: 5)
 COMPUTER_SESSIONS_LIMIT=5
+
+# Local-first personal data directory (never committed)
+# COMPUTER_LOCAL_DIR="$HOME/.computer/local"
+# COMPUTER_SESSIONS_DIR="$COMPUTER_LOCAL_DIR/sessions"
+# COMPUTER_KNOWLEDGE_DIR="$COMPUTER_LOCAL_DIR/knowledge"
+# COMPUTER_STATE_DIR="$COMPUTER_LOCAL_DIR/state"
+# COMPUTER_INBOX_DIR="$COMPUTER_LOCAL_DIR/inbox"

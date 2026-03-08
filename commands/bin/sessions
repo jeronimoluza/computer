@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# computer sessions - list ingested sessions from ~/.computer/local/sessions
+set -euo pipefail
+
+COMPUTER_HOME="${HOME}/.computer"
+LIB="${COMPUTER_HOME}/commands/lib/common.sh"
+
+# shellcheck disable=SC1090
+[ -f "${LIB}" ] && source "${LIB}"
+
+usage() {
+  cat <<'EOF'
+Usage: computer sessions [--tool TOOL] [--project PROJECT_KEY] [--limit N]
+
+Lists sessions from ~/.computer/local/sessions.
+
+Options:
+  --tool TOOL        Filter by tool (opencode, claude, ...)
+  --project KEY      Filter by project_key (repo slug)
+  --limit N          Max rows (default: COMPUTER_SESSIONS_LIMIT)
+  -h, --help         Show help
+EOF
+}
+
+load_settings 2>/dev/null || true
+ensure_local_dirs
+
+tool=""
+project_key=""
+limit="${COMPUTER_SESSIONS_LIMIT:-5}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --tool)
+      tool="${2:-}"
+      shift 2
+      ;;
+    --project)
+      project_key="${2:-}"
+      shift 2
+      ;;
+    --limit)
+      limit="${2:-}"
+      shift 2
+      ;;
+    *)
+      err "Unknown argument: $1"
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+if ! command -v python3 >/dev/null 2>&1; then
+  err "python3 is required for session listing"
+  exit 1
+fi
+
+python3 "${COMPUTER_HOME}/commands/lib/list_sessions.py" \
+  --root "${COMPUTER_SESSIONS_DIR}" \
+  --tool "$tool" \
+  --project "$project_key" \
+  --limit "$limit"

@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# computer curate - scaffold a knowledge object from a session
+set -euo pipefail
+
+COMPUTER_HOME="${HOME}/.computer"
+LIB="${COMPUTER_HOME}/commands/lib/common.sh"
+
+# shellcheck disable=SC1090
+[ -f "${LIB}" ] && source "${LIB}"
+
+usage() {
+  cat <<'EOF'
+Usage: computer curate <tool> <session_id> [--personal]
+
+Creates a draft knowledge object from an ingested session.
+
+By default, writes under:
+  ~/.computer/local/knowledge/projects/<project_key>/
+
+If project_key is missing (or --personal is passed), writes under:
+  ~/.computer/local/knowledge/personal/
+
+EOF
+}
+
+load_settings 2>/dev/null || true
+ensure_local_dirs
+
+tool="${1:-}"
+session_id="${2:-}"
+shift 2 2>/dev/null || true
+
+personal=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --personal)
+      personal=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      err "Unknown argument: $1"
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+if [[ -z "$tool" || -z "$session_id" ]]; then
+  usage
+  exit 1
+fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+  err "python3 is required for curation scaffolding"
+  exit 1
+fi
+
+python3 "${COMPUTER_HOME}/commands/lib/curate_session.py" \
+  --sessions-root "${COMPUTER_SESSIONS_DIR}" \
+  --knowledge-root "${COMPUTER_KNOWLEDGE_DIR}" \
+  --tool "$tool" \
+  --session-id "$session_id" \
+  $( [[ $personal -eq 1 ]] && printf '%s' "--personal" )

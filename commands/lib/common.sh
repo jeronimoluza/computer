@@ -28,10 +28,27 @@ load_settings() {
     COMPUTER_PROJECTS_LIMIT=5
     COMPUTER_SESSIONS_LIMIT=5
 
+    # Local-first personal data (never committed)
+    COMPUTER_LOCAL_DIR="${HOME}/.computer/local"
+    COMPUTER_SESSIONS_DIR="${COMPUTER_LOCAL_DIR}/sessions"
+    COMPUTER_KNOWLEDGE_DIR="${COMPUTER_LOCAL_DIR}/knowledge"
+    COMPUTER_STATE_DIR="${COMPUTER_LOCAL_DIR}/state"
+    COMPUTER_INBOX_DIR="${COMPUTER_LOCAL_DIR}/inbox"
+
     if [ -f "$COMPUTER_SETTINGS" ]; then
         # shellcheck disable=SC1090
         . "$COMPUTER_SETTINGS"
     fi
+}
+
+ensure_local_dirs() {
+    # Best-effort: keep local data paths present.
+    mkdir -p \
+        "${COMPUTER_SESSIONS_DIR}" \
+        "${COMPUTER_KNOWLEDGE_DIR}" \
+        "${COMPUTER_STATE_DIR}" \
+        "${COMPUTER_INBOX_DIR}"
+    chmod 700 "${COMPUTER_LOCAL_DIR}" 2>/dev/null || true
 }
 
 # ── Load project dirs from config/projects.conf ───────────────────────────────
