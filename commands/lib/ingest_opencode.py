@@ -45,7 +45,10 @@ def detect_project_key(directory: str) -> Optional[str]:
         return None
     while True:
         if os.path.isdir(os.path.join(d, ".git")):
-            return os.path.basename(d)
+            base = os.path.basename(d)
+            if base.startswith(".") and len(base) > 1:
+                base = base[1:]
+            return base
         parent = os.path.dirname(d)
         if parent == d:
             return None
