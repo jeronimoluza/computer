@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+COMPUTER_HOME="${HOME}/.computer"
+LIB="${COMPUTER_HOME}/commands/lib/common.sh"
+
+# shellcheck disable=SC1090
+source "$LIB"
+
+find_project_root() {
+  local dir
+  dir="$(pwd -P)"
+  while true; do
+    if [[ -d "$dir/docs/paper" ]]; then
+      printf '%s\n' "$dir"
+      return
+    fi
+    if [[ -d "$dir/.git" ]]; then
+      printf '%s\n' "$dir"
+      return
+    fi
+    [[ "$dir" == "/" ]] && break
+    dir="$(dirname "$dir")"
+  done
+  pwd -P
+}
+
+stat_mtime() {
+  local f="$1"
+  if stat -f '%Sm' -t '%Y-%m-%d %H:%M' "$f" >/dev/null 2>&1; then
+    stat -f '%Sm' -t '%Y-%m-%d %H:%M' "$f"
+  elif stat -c '%y' "$f" >/dev/null 2>&1; then
+    stat -c '%y' "$f" | cut -c1-16
+  else
+    echo "unknown"
+  fi
+}
+
+file_bytes() {
+  local f="$1"
+  if stat -f '%z' "$f" >/dev/null 2>&1; then
+    stat -f '%z' "$f"
+  elif stat -c '%s' "$f" >/dev/null 2>&1; then
+    stat -c '%s' "$f"
+  else
+    wc -c <"$f" | tr -d ' '
+  fi
+}
+
+est_tokens() {
+  local bytes="$1"
+  # Very rough heuristic: ~4 bytes/token for English-ish text.
+  echo $(( (bytes + 3) / 4 ))
+}
+
+extract_state_kv() {
+  local f="$1" key="$2"
+  awk -v k="$key" '
+    $0 ~ ("^" k ":[[:space:]]*") {
+      sub(("^" k ":[[:space:]]*"), "", $0);
+      print $0;
+      exit
+    }
+  ' "$f" 2>/dev/null || true
+}
+
+PROJECT_ROOT="$(find_project_root)"
+PAPER_DIR="${PROJECT_ROOT}/docs/paper"
+STATE_FILE="${PAPER_DIR}/STATE.md"
+PAPER_FILE="${PAPER_DIR}/paper.md"
+SESSIONS_DIR="${PROJECT_ROOT}/sessions"
+TODO_FILE="${PROJECT_ROOT}/TODO.md"
+
+echo ""
+printf "${BOLD}${CYAN}Document Dashboard${RESET}  ${DIM}(%s)${RESET}\n" "${PROJECT_ROOT/#$HOME/~}"
+echo ""
+sep
+
+if [[ ! -d "$PAPER_DIR" ]]; then
+  warn "Not initialized: docs/paper/ missing"
+  echo ""
+  printf "  Create: %s\n" "mkdir -p docs/paper sessions"
+  printf "  Add:    %s\n" "docs/paper/paper.md, docs/paper/STATE.md, TODO.md"
+  echo ""
+  exit 0
+fi
+
+printf "${BOLD}Paths${RESET}\n"
+printf "  ${GREEN}%-18s${RESET} %s\n" "paper" "${PAPER_FILE/#$HOME/~}"
+printf "  ${GREEN}%-18s${RESET} %s\n" "state" "${STATE_FILE/#$HOME/~}"
+printf "  ${GREEN}%-18s${RESET} %s\n" "sessions" "${SESSIONS_DIR/#$HOME/~}"
+printf "  ${GREEN}%-18s${RESET} %s\n" "todo" "${TODO_FILE/#$HOME/~}"
+sep
+
+printf "${BOLD}Snapshot${RESET}\n"
+if [[ -f "$STATE_FILE" ]]; then
+  about="$(extract_state_kv "$STATE_FILE" "About")"
+  goal="$(extract_state_kv "$STATE_FILE" "Goal")"
+  [[ -n "$about" ]] && printf "  ${CYAN}%-8s${RESET} %s\n" "About" "$about"
+  [[ -n "$goal"  ]] && printf "  ${CYAN}%-8s${RESET} %s\n" "Goal"  "$goal"
+  if [[ -z "$about" && -z "$goal" ]]; then
+    printf "  ${DIM}%s${RESET}\n" "STATE.md present (no About/Goal lines found)."
+  fi
+else
+  printf "  ${DIM}%s${RESET}\n" "No STATE.md yet."
+fi
+sep
+
+printf "${BOLD}Sessions (recent)${RESET}\n"
+if [[ -d "$SESSIONS_DIR" ]]; then
+  shopt -s nullglob
+  files=("$SESSIONS_DIR"/*.md)
+  shopt -u nullglob
+  if [[ ${#files[@]} -eq 0 ]]; then
+    printf "  ${DIM}%s${RESET}\n" "No session logs yet."
+  else
+    printf "  ${DIM}%-16s %-8s %-8s %-16s %s${RESET}\n" "mtime" "bytes" "tokens" "type" "file"
+    # Sort by mtime descending (macOS stat -f %m gives epoch seconds)
+    while IFS='|' read -r epoch f; do
+      mtime="$(stat_mtime "$f")"
+      bytes="$(file_bytes "$f")"
+      tokens="$(est_tokens "$bytes")"
+      base="$(basename "$f")"
+      typ="change"
+      [[ "$base" == *"-proposal.md" ]] && typ="proposal"
+      printf "  %-16s %-8s %-8s %-16s %s\n" "$mtime" "$bytes" "$tokens" "$typ" "${base}"
+    done < <(
+      for f in "${files[@]}"; do
+        if stat -f '%m' "$f" >/dev/null 2>&1; then
+          printf '%s|%s\n' "$(stat -f '%m' "$f")" "$f"
+        elif stat -c '%Y' "$f" >/dev/null 2>&1; then
+          printf '%s|%s\n' "$(stat -c '%Y' "$f")" "$f"
+        else
+          printf '0|%s\n' "$f"
+        fi
+      done | sort -t'|' -k1 -rn | head -n 7
+    )
+  fi
+else
+  printf "  ${DIM}%s${RESET}\n" "sessions/ missing."
+fi
+sep
+
+printf "${BOLD}TODO (top)${RESET}\n"
+if [[ -f "$TODO_FILE" ]]; then
+  # show first 12 non-empty lines
+  awk 'NF{print; shown++} shown==12{exit}' "$TODO_FILE" | sed 's/^/  /'
+else
+  printf "  ${DIM}%s${RESET}\n" "No TODO.md yet."
+fi
+sep
+
+printf "${DIM}%s${RESET}\n" "Tip: export via pandoc (see skill references/export.md)."
+echo ""
