@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# computer newtask - scaffold a task file
+set -euo pipefail
+
+COMPUTER_HOME="${HOME}/.computer"
+TASKS_DIR="${COMPUTER_HOME}/tasks"
+LIB="${COMPUTER_HOME}/commands/lib/common.sh"
+
+# shellcheck disable=SC1090
+[ -f "$LIB" ] && source "$LIB"
+
+usage() {
+  cat <<'EOF'
+Usage: computer newtask <name> [--no-date] [--force]
+Creates a task list in ~/.computer/tasks.
+
+Options:
+  --no-date  Do not prefix the filename with YYYY-MM-DD
+  --force    Overwrite if the task file already exists
+  -h, --help Show this help
+EOF
+}
+
+force=0
+no_date=0
+name=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --force)
+      force=1
+      shift
+      ;;
+    --no-date)
+      no_date=1
+      shift
+      ;;
+    *)
+      if [[ -z "$name" ]]; then
+        name="$1"
+        shift
+      else
+        err "Unknown argument: $1"
+        usage
+        exit 1
+      fi
+      ;;
+  esac
+done
+
+if [[ -z "$name" ]]; then
+  usage
+  exit 1
+fi
+
+safe_name=$(printf '%s' "$name" | tr ' ' '-' | tr -cd 'A-Za-z0-9_-')
+if [[ -z "$safe_name" ]]; then
+  err "Invalid name: $name"
+  exit 1
+fi
+
+mkdir -p "$TASKS_DIR"
+
+date_prefix=""
+if [[ $no_date -ne 1 ]]; then
+  date_prefix="$(date +%Y-%m-%d)-"
+fi
+
+task_file="${TASKS_DIR}/${date_prefix}${safe_name}.md"
+
+if [[ -e "$task_file" && $force -ne 1 ]]; then
+  warn "${task_file} already exists. Use --force to overwrite."
+  exit 1
+fi
+
+cat <<EOF > "$task_file"
+# Task: ${name}
+
+## Goal
+-
+
+## Checklist
+- [ ]
+- [ ]
+- [ ]
+
+## Notes
+-
+EOF
+
+ok "Created task: $task_file"

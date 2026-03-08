@@ -178,6 +178,16 @@ setup_config() {
     done
 }
 
+# ── Sync skills into Claude Code ─────────────────────────────────────────────
+sync_skills() {
+    SKILL_SYNC="${COMPUTER_HOME}/commands/bin/sync-skills"
+    if [ -x "$SKILL_SYNC" ]; then
+        "$SKILL_SYNC" --link --force >/dev/null 2>&1 || warn "Skill sync failed"
+    else
+        warn "sync-skills not found, skipping"
+    fi
+}
+
 # ── Print summary ─────────────────────────────────────────────────────────────
 print_summary() {
     echo ""
@@ -219,6 +229,7 @@ main() {
     install_hook
     setup_path
     setup_config
+    sync_skills
     print_summary
 }
 

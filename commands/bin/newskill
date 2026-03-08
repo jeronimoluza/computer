@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# computer newskill - scaffold a new skill
+set -euo pipefail
+
+COMPUTER_HOME="${HOME}/.computer"
+SKILLS_DIR="${COMPUTER_HOME}/skills"
+LIB="${COMPUTER_HOME}/commands/lib/common.sh"
+
+# shellcheck disable=SC1090
+[ -f "$LIB" ] && source "$LIB"
+
+usage() {
+  cat <<'EOF'
+Usage: computer newskill <name> [--force]
+Creates a new skill in ~/.computer/skills/<name>/SKILL.md.
+
+Options:
+  --force     Overwrite if the skill already exists
+  -h, --help  Show this help
+EOF
+}
+
+force=0
+name=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --force)
+      force=1
+      shift
+      ;;
+    *)
+      if [[ -z "$name" ]]; then
+        name="$1"
+        shift
+      else
+        err "Unknown argument: $1"
+        usage
+        exit 1
+      fi
+      ;;
+  esac
+done
+
+if [[ -z "$name" ]]; then
+  usage
+  exit 1
+fi
+
+if [[ ! "$name" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]]; then
+  err "Invalid name: $name"
+  err "Use only letters, numbers, dashes, and underscores."
+  exit 1
+fi
+
+skill_dir="${SKILLS_DIR}/${name}"
+skill_file="${skill_dir}/SKILL.md"
+
+if [[ -e "$skill_file" && $force -ne 1 ]]; then
+  warn "${skill_file} already exists. Use --force to overwrite."
+  exit 1
+fi
+
+mkdir -p "$skill_dir"
+
+cat <<EOF > "$skill_file"
+# Skill: ${name}
+
+## Overview
+Briefly describe the purpose of this skill.
+
+## Triggers
+- "When the user asks to ..."
+
+## Workflow
+1. Step one
+2. Step two
+
+## Constraints
+- Keep changes minimal and safe.
+
+## Examples
+- "Example user prompt"
+EOF
+
+ok "Created skill: $skill_file"

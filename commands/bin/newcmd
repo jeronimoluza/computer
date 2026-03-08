@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# computer newcmd - scaffold a new command
+set -euo pipefail
+
+COMPUTER_HOME="${HOME}/.computer"
+COMMANDS_DIR="${COMPUTER_HOME}/commands/bin"
+LIB="${COMPUTER_HOME}/commands/lib/common.sh"
+
+# shellcheck disable=SC1090
+[ -f "$LIB" ] && source "$LIB"
+
+usage() {
+  cat <<'EOF'
+Usage: computer newcmd <name> [--force]
+Creates a new executable command in ~/.computer/commands/bin.
+
+Options:
+  --force     Overwrite if the command already exists
+  -h, --help  Show this help
+EOF
+}
+
+force=0
+name=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --force)
+      force=1
+      shift
+      ;;
+    *)
+      if [[ -z "$name" ]]; then
+        name="$1"
+        shift
+      else
+        err "Unknown argument: $1"
+        usage
+        exit 1
+      fi
+      ;;
+  esac
+done
+
+if [[ -z "$name" ]]; then
+  usage
+  exit 1
+fi
+
+if [[ ! "$name" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]]; then
+  err "Invalid name: $name"
+  err "Use only letters, numbers, dashes, and underscores."
+  exit 1
+fi
+
+if [[ "$name" == "computer" ]]; then
+  err "'computer' is reserved. Choose a different name."
+  exit 1
+fi
+
+mkdir -p "$COMMANDS_DIR"
+target="${COMMANDS_DIR}/${name}"
+
+if [[ -e "$target" && $force -ne 1 ]]; then
+  warn "${target} already exists. Use --force to overwrite."
+  exit 1
+fi
+
+cat <<EOF > "$target"
+#!/usr/bin/env bash
+# computer ${name} - describe what this command does
+set -euo pipefail
+
+COMPUTER_HOME="\${HOME}/.computer"
+LIB="\${COMPUTER_HOME}/commands/lib/common.sh"
+
+# shellcheck disable=SC1090
+[ -f "\${LIB}" ] && source "\${LIB}"
+
+usage() {
+  cat <<'USAGE'
+Usage: computer ${name} [options]
+Describe what this command does.
+
+Options:
+  -h, --help  Show help
+USAGE
+}
+
+if [[ "\${1:-}" == "-h" || "\${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+# TODO: implement
+echo "TODO: implement ${name}"
+EOF
+
+chmod +x "$target"
+ok "Created command: $target"

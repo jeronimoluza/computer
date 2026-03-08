@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# computer sync-skills - sync .computer skills to Claude Code
+set -euo pipefail
+
+COMPUTER_HOME="${HOME}/.computer"
+SKILLS_SRC="${COMPUTER_HOME}/skills"
+CLAUDE_SKILLS_DIR="${HOME}/.claude/skills"
+LIB="${COMPUTER_HOME}/commands/lib/common.sh"
+
+# shellcheck disable=SC1090
+[ -f "$LIB" ] && source "$LIB"
+
+usage() {
+  cat <<'EOF'
+Usage: computer sync-skills [--copy|--link] [--force] [--prune] [--dry-run]
+Syncs ~/.computer/skills into ~/.claude/skills so Claude Code can load them.
+
+Options:
+  --link     Create symlinks (default)
+  --copy     Copy skill directories instead of linking
+  --force    Overwrite existing entries
+  --prune    Remove skills in ~/.claude/skills not present in ~/.computer/skills
+  --dry-run  Show actions without making changes
+  -h, --help Show this help
+EOF
+}
+
+mode="link"
+force=0
+prune=0
+dry_run=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --copy)
+      mode="copy"
+      shift
+      ;;
+    --link)
+      mode="link"
+      shift
+      ;;
+    --force)
+      force=1
+      shift
+      ;;
+    --prune)
+      prune=1
+      shift
+      ;;
+    --dry-run)
+      dry_run=1
+      shift
+      ;;
+    *)
+      err "Unknown argument: $1"
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+if [[ ! -d "$SKILLS_SRC" ]]; then
+  err "Missing skills directory: $SKILLS_SRC"
+  exit 1
+fi
+
+if [[ $dry_run -eq 1 ]]; then
+  info "Dry run enabled"
+fi
+
+mkdir -p "$CLAUDE_SKILLS_DIR"
+
+sync_one() {
+  local skill_dir="$1"
+  local name
+  local target
+  local action
+  name=$(basename "$skill_dir")
+  target="${CLAUDE_SKILLS_DIR}/${name}"
+
+  if [[ -e "$target" ]]; then
+    if [[ $force -ne 1 ]]; then
+      warn "Exists: $target (use --force to overwrite)"
+      return 0
+    fi
+    action="replace"
+    if [[ $dry_run -eq 0 ]]; then
+      rm -rf "$target"
+    fi
+  else
+    action="create"
+  fi
+
+  if [[ $mode == "link" ]]; then
+    if [[ $dry_run -eq 0 ]]; then
+      ln -s "$skill_dir" "$target"
+    fi
+    ok "${action} link: ${target} -> ${skill_dir}"
+  else
+    if [[ $dry_run -eq 0 ]]; then
+      cp -R "$skill_dir" "$target"
+    fi
+    ok "${action} copy: ${target}"
+  fi
+}
+
+for dir in "$SKILLS_SRC"/*; do
+  [[ -d "$dir" ]] || continue
+  sync_one "$dir"
+done
+
+if [[ $prune -eq 1 ]]; then
+  for dir in "$CLAUDE_SKILLS_DIR"/*; do
+    [[ -d "$dir" || -L "$dir" ]] || continue
+    name=$(basename "$dir")
+    if [[ ! -d "$SKILLS_SRC/$name" ]]; then
+      if [[ $dry_run -eq 0 ]]; then
+        rm -rf "$dir"
+      fi
+      ok "pruned: $dir"
+    fi
+  done
+fi
+
+ok "sync complete"
